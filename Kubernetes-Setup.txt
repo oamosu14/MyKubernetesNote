@@ -1,0 +1,450 @@
+https://www.profiq.com/kubernetes-cluster-setup-using-virtual-machines/
+https://medium.com/@fromprasath/setup-kubernetes-cluster-using-kubeadm-in-vsphere-virtual-machines-985372ee5b97
+
+
+
+Kubernetes Setup using Minikube
+
+minikube.exe start
+kubectl get nodes
+kubectl get pods
+kubectl run hello-minikube --image=k8s.gcr.io/echoserver:1.4 --port=8080
+kubectl get pods       --> to see the pods created
+kubectl expose deployment hello-minikube --type=NodePort   --> to expose and access the webpage
+minikube service hello-minikube --url   --> to get the url
+then copy the url to web browser to access the webpage
+
+
+Installation of Kubernetes CLuster with Kubeadm
+https://v1-19.docs.kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+
+
+Letting iptables see bridged traffic
+Make sure that the br_netfilter module is loaded. This can be done by running lsmod | grep br_netfilter. To load it explicitly call sudo modprobe br_netfilter.
+
+As a requirement for your Linux Node's iptables to correctly see bridged traffic, you should ensure net.bridge.bridge-nf-call-iptables is set to 1 in your sysctl config, e.g.
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+
+sudo sysctl --system
+
+
+sudo yum install -y yum-utils device-mapper-persistent-data lvm2
+
+sudo yum-config-manager --add-repo \
+  https://download.docker.com/linux/centos/docker-ce.repo
+
+sudo yum update -y && sudo yum install -y \
+  containerd.io-1.2.13 \
+  docker-ce-19.03.11 \
+  docker-ce-cli-19.03.11
+
+sudo mkdir /etc/docker
+
+# Set up the Docker daemon
+cat <<EOF | sudo tee /etc/docker/daemon.json
+{
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m"
+  },
+  "storage-driver": "overlay2",
+  "storage-opts": [
+    "overlay2.override_kernel_check=true"
+  ]
+}
+EOF
+
+# Create /etc/systemd/system/docker.service.d
+sudo mkdir -p /etc/systemd/system/docker.service.d
+
+# Restart Docker
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+sudo systemctl enable docker
+
+sudo systemctl status docker
+
+-----------------------------------------------------------
+
+Installing kubeadm, kubelet and kubectl
+You will install these packages on all of your machines:
+
+kubeadm: the command to bootstrap the cluster.
+
+kubelet: the component that runs on all of the machines in your cluster and does things like starting pods and containers.
+
+kubectl: the command line util to talk to your cluster.
+
+
+Kubernetes version and version-skew policy
+Kubeadm-specific version skew policy
+Ubuntu, Debian or HypriotOS
+CentOS, RHEL or Fedora
+
+
+
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF
+
+# Set SELinux in permissive mode (effectively disabling it)
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+sudo systemctl enable --now kubelet
+
+--------------------------------------------
+
+Initialize the Kebernetes cluster - Master
+
+# kubeadm init --pod-network-cidr=192.168.1.1/16 --apiserver-advertise-address=192.168.56.107
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 192.168.56.107:6443 --token d67f3a.97l8tq6r93jmdirx \
+    --discovery-token-ca-cert-hash sha256:6567857a189f5a233bca24a78ec406b221ea19bf84af4c951c08ec7351c6a7d5
+
+
+NOTE: copy this from the output and save for later use:
+kubeadm join 192.168.56.107:6443 --token d67f3a.97l8tq6r93jmdirx \
+    --discovery-token-ca-cert-hash sha256:6567857a189f5a233bca24a78ec406b221ea19bf84af4c951c08ec7351c6a7d5
+
+# export KUBECONFIG=/etc/kubernetes/admin.conf
+
+Installing a Pod network 
+
+# kubectl apply -f  https://docs.projectcalico.org/v3.0/getting-started/kubernetes/installation/hosted/kubeadm/1.7/calico.yaml
+
+# kubectl get pods --all-namespaces
+be sure everything is in Running state.
+
+Now Run the kubeadm join command to join the nodes - run this command on the worker nodes
+
+# kubeadm join  --token d67f3a.97l8tq6r93jmdirx 192.168.56.107:6443   --discovery-token-ca-cert-hash sha256:6567857a189f5a233bca24a78ec406b221ea19bf84af4c951c08ec7351c6a7d5
+
+
+
+
+-------------------------- Setup Kubernetes (K8s) Cluster on AWS -----------------------
+
+1. Create Ubuntu EC2 instance
+
+2. Install AWSCLI
+
+ curl https://s3.amazonaws.com/aws-cli/awscli-bundle.zip -o awscli-bundle.zip
+ apt install unzip python
+ unzip awscli-bundle.zip
+ #sudo apt-get install unzip ---> if you dont have unzip in your system
+ ./awscli-bundle/install -i /usr/local/aws -b /usr/local/bin/aws
+aws --version       --> to confirm
+
+
+3. Install kubectl on ubuntu instance
+
+curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+chmod +x ./kubectl
+sudo mv ./kubectl /usr/local/bin/kubectl
+kubectl      --->  to try kubectl command
+
+Try kops command to see if kops is installed
+kops
+
+4. Install kops on ubuntu instance
+
+curl -LO  https://github.com/kubernetes/kops/releases/download/1.15.0/kops-linux-amd64
+chmod +x kops-linux-amd64
+sudo mv kops-linux-amd64 /usr/local/bin/kops
+kops version    -->  (it should be 1.15.0)
+kops
+
+Note: Use the below command if you wish to use latest version. For now we could see latest version of kops. So ignore it until further update. 
+# curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+
+5. Create an IAM user/role with Route53, EC2, IAM and S3 full access
+Services -->  IAM  -->  Roles  -->  Create a role  -->  choose EC2  -->  Next Permission  -->  attach policies here (EC2 fullaccess, S3 fullaccess, Route53 fullaccess and IAM fullaccess)  --> Next Tags  -->  Name: k8s-role  --> Next: Review  -->  Role name: k8s-role  --> Create role  
+
+
+6. Attach IAM role to ubuntu EC2 instance
+
+Goto EC2 Instance  --> select the EC2 instance  -->  Actions  -->  Instance settings  -->  Attach/Replace IAM Role  --> choose k8s-role  -->  Apply  --> Close
+
+# Note: If you create IAM user with programmatic access then provide Access keys. Otherwise region information is enough
+
+aws configure
+root@ip-172-31-58-3:/home/ubuntu# aws configure
+AWS Access Key ID [None]:
+AWS Secret Access Key [None]:
+Default region name [None]: us-east-1   --> (enter your EC2 instance region)
+Default output format [None]:
+
+
+7. Create a Route53 private hosted zone (you can create Public hosted zone if you have a domain)
+
+Goto AWS console   --> services  -->  Networking  --> Route53  --> Get Started now  --> Create Hosted Zone  -->  Domain name: insighttech.net  -->  Private Hosted zone  -->  choose your region [us-east-1]  -->  choose VPC info ID --> Create
+
+Route53 --> hosted zones --> created hosted zone  
+Domain Name: insighttech.net
+Type: Private hosted zone for Amazon VPC. Make sure you are chosing right VPC if you have multiple
+
+
+8. create an S3 bucket (on awsCLI or AWS Console)
+goto AWS console  --> s3 to confirm existing buckets
+
+aws s3 mb s3://demo.k8s.insighttech.net
+
+root@ip-172-31-58-3:/home/ubuntu# aws s3 mb s3://demo.k8s.insighttech.net
+make_bucket: demo.k8s.insighttech.net
+
+go back to AWS console to confirm creation of the bucket.
+
+
+9. Expose environment variable: need to export the s3 bucket, so that kops could use it
+
+export KOPS_STATE_STORE=s3://demo.k8s.insighttech.net
+
+
+10. Create sshkeys before creating cluster - because this will be used to login to our kubernetes cluster, without this, we won't be able to login to our kubernetes cluster
+
+ssh-keygen
+cd ~/.ssh
+ls -l
+
+the public key will be copied to kubernetes cluster, so by using the key, we can login tothe cluster seemlessly
+
+11. Create kubernetes cluster definitions on S3 bucket  -- need to specify available region based on the region we created all our resources
+
+kops create cluster --cloud=aws --zones=us-east-1a --name=demo.k8s.insighttech.net --dns-zone=insighttech.net --dns private 
+
+Output:
+Must specify --yes to apply changes
+
+Cluster configuration has been created.
+
+Suggestions:
+ * list clusters with: kops get cluster
+ * edit this cluster with: kops edit cluster demo.k8s.insighttech.net
+ * edit your node instance group: kops edit ig --name=demo.k8s.insighttech.net nodes
+ * edit your master instance group: kops edit ig --name=demo.k8s.insighttech.net master-us-east-1a
+
+Finally configure your cluster with: kops update cluster --name demo.k8s.insighttech.net --yes
+
+
+12. Create kubernetes cluser, whenever this command is executed, the cluster get created
+
+kops update cluster demo.k8s.insighttech.net --yes
+
+OUTPUT:
+Cluster is starting.  It should be ready in a few minutes.
+
+Suggestions:
+ * validate cluster: kops validate cluster
+ * list nodes: kubectl get nodes --show-labels
+ * ssh to the master: ssh -i ~/.ssh/id_rsa admin@api.demo.k8s.insighttech.net
+ * the admin user is specific to Debian. If not using Debian please use the appropriate user based on your OS.
+ * read about installing addons at: https://github.com/kubernetes/kops/blob/master/docs/addons.md.
+
+kops validate cluster    ---> to validate the k8s clusters
+
+OUTPUT:
+root@ip-172-31-83-254:~/.ssh# kops validate cluster
+Using cluster from kubectl context: demo.k8s.insighttech.net
+
+Validating cluster demo.k8s.insighttech.net
+
+INSTANCE GROUPS
+NAME                    ROLE    MACHINETYPE     MIN     MAX     SUBNETS
+master-us-east-1a       Master  m3.medium       1       1       us-east-1a
+nodes                   Node    t2.medium       2       2       us-east-1a
+
+NODE STATUS
+NAME                            ROLE    READY
+ip-172-20-52-147.ec2.internal   master  True
+ip-172-20-55-91.ec2.internal    node    True
+ip-172-20-61-111.ec2.internal   node    True
+
+Your cluster demo.k8s.insighttech.net is ready
+
+Note:
+After executing this command, it will create other additional resources in AWS, new file in s3, IAM roles, Route53 records set and routes, EC2 instaces launched and Launched configuration as well as Auto-scalling group in case of any failure.
+
+Next is to ssh to the master: 
+ssh -i ~/.ssh/id_rsa admin@api.demo.k8s.insighttech.net
+
+Now you are in the Master K8s cluster, you can confirm the with the master-us-east master on AWS console (the Private IP)
+
+exit    --> to go back to Ubuntu environment
+
+
+13. To change the kubernetes master and worker instance sizes
+You can edit the nodes and master nodes name and instance type:
+
+##kops edit ig --name=<cluster_name> nodes
+kops edit ig --name=demo.k8s.insighttech.net nodes 
+
+##kops edit ig --name=<cluster_name> master-<zone_name>
+kops edit ig --name=demo.k8s.insighttech.net master-us-east-1a
+
+
+14. Validate your cluster
+kops validate cluster
+
+15. To list nodes
+kubectl get nodes
+
+
+16. To Delete cluster (try once your lab is done) once you delete, all definitions on AWS account will be deleted and will remove the resources as well
+#kops delete cluster <cluster_name> --yes
+kops delete cluster demo.k8s.insighttech.net --yes
+
+
+----------------------------Deploying Nginx pods on Kubernetes
+
+1. Deploying Nginx Container
+
+##kubectl run --generator=run-pod/v1 sample-nginx --image=nginx --replicas=2 --port=80
+kubectl run sample-nginx --image=nginx --replicas=2 --port=80
+# kubectl run simple-devops-project --image=oamosu/simple-devops-image --replicas=2 --port=8080
+kubectl get pods
+kubectl get deployments
+
+2. Expose the deployment as service. This will create an ELB in front of those 2 containers and allow us to publicly access them.
+
+#kubectl expose deployment sample-nginx --port=80 --type=LoadBalancer
+kubectl expose deployment simple-devops-project --port=8080 --type=LoadBalancer
+kubectl get services -o wide
+
+NOTE:
+“A container runs logically in a pod (though it also uses a container runtime); A group of pods, related or unrelated, run on a cluster. A pod is a unit of replication on a cluster; A cluster can contain many pods, related or unrelated [and] grouped under the tight logical borders called namespaces.”
+Unlike other systems you may have used in the past, Kubernetes doesn't run containers directly; instead it wraps one or more containers into a higher-level structure called a pod. Any containers in the same pod will share the same resources and local network. Pods are used as the unit of replication in Kubernetes.
+
+
+--------------------------------------
+deploy.yml
+--------------------------------------
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: insight-deployment
+spec:
+  selector:
+    matchLabels:
+      app: insight-devops-project
+  replicas: 2 # tells deployment to run 2 pods matching the template
+
+  template:
+    metadata:
+      labels:
+         app: insight-devops-project
+    spec:
+      containers:
+      - name: insight-devops-project
+         image: oamosu/simple-devops-image
+         ports:
+         - containerPort: 8080
+
+------------------------------------
+service.yml
+------------------------------------
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: insight-service
+  labels:
+    app: insight-devops-project
+spec:
+  selector:
+    app: insight-devops-project
+  type: LoadBalancer
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 31200
+
+--------------------------------------
+nginx-deploy.yaml
+--------------------------------------
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+
+--------------------------------------
+deploy2.yml  --> for keep
+--------------------------------------
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: valaxy-deployment
+spec:
+  selector:
+    matchLabels:
+      app: insight-devops-project
+  replicas: 2 # tells deployment to run 2 pods matching the template
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+
+  template:
+    metadata:
+      labels:
+        app: insight-devops-project
+    spec:
+      containers:
+      - name: insight-devops-project
+        image: oamosu/simple-devops-image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
